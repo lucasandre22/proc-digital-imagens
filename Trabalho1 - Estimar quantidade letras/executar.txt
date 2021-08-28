@@ -1,0 +1,1 @@
+gcc main.c pdi.c -o exec

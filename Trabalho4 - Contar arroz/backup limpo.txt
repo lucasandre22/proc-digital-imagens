@@ -1,0 +1,247 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+#include "pdi.h"
+#include <windows.h>
+
+#define INPUT_IMAGE "150.bmp"
+#define CANAIS_IMAGEM 3
+
+int linhaHorizontal(Imagem* img, ComponenteConexo** componentes, int size_componentes, int* vetor, float* mapa, int* duplicados);
+int linhaVertical(Imagem* img, ComponenteConexo** componentes, int size_componentes, int* vetor, float* mapa, int* duplicados);
+int retornaIndice(float *v, int size, float label);
+
+
+int calculaQuantidadeArrozBlob(int* duplicados, ComponenteConexo* componentes, int size) {
+    int total = 0;
+    float media1;
+    int n = 0;
+    int diminuir = 0;
+
+    for(int i = 0; i < size; i++) {
+        if(duplicados[i] == 0) {
+            total += componentes[i].n_pixels;
+        }
+        else {
+            diminuir++;
+        }
+    }
+    
+    media1 = total/(size-diminuir);
+
+    for(int i = 0; i < size; i++) {
+        if(duplicados[i] == 1) {
+            if(componentes[i].n_pixels > media1 && abs(componentes[i].n_pixels - media1) > (media1/3.2)) { //3.2
+                n++;
+
+                //ve quantas vezes o valor total de pixels do blob pode ser dividido em arrozes
+                for(int j = 2; (abs((componentes[i].n_pixels/j) - media1)) > (media1/2.8); j++) { //2.8
+                    n++;
+                }
+            }
+        }
+    }
+
+    //printf("Media: %f, valor a mais: %d\n", media1, n);
+    return n;
+}
+
+Imagem* teste3(Imagem* img, Imagem* out, int* duplicados, ComponenteConexo* componentes, int size) {
+    int flag = 0;
+    float _label = 0;
+    int p;
+
+    for(int i = 0; i < img->altura; i++) {
+        for(int j = 0; j < img->largura; j++) {
+            if(img->dados[0][i][j] != 0) {
+                if(img->dados[0][i][j] != _label) {
+                    for(p = 0; p < size; p++) {
+                        if(duplicados[p] != 0) {
+                            _label = componentes[p].label;
+                            break;
+                        }
+                    }
+                }
+
+                if(img->dados[0][i][j] == _label) {
+                    out->dados[0][i][j] = 1;
+                }
+                else
+                    out->dados[0][i][j] = 0;
+            }
+        }
+    }
+    return out;
+}
+
+int main ()
+{
+    Imagem* img;
+    Imagem* img_out;
+    Imagem* buffer;
+    Imagem* escala_cinza;
+    Imagem* img_abertura;
+    Imagem* d;
+    Imagem* e;
+    Imagem* testezona;
+    ComponenteConexo* componentes;
+    int total;
+    
+    int duplicados[300];
+
+    //diferentes sizes pro dilate e/ou erode
+    Coordenada centro = criaCoordenada(3,3);
+    Imagem* kernel = criaKernelCircular(7);
+    
+    Coordenada centroD = criaCoordenada(1,1);
+    Imagem* kernelD = criaKernelCircular(3);
+
+    Coordenada centroA = criaCoordenada(2,2);
+    Imagem* kernelA = criaKernelCircular(5);
+
+    
+
+    for(int h = 0; h < 300; h++)
+        duplicados[h] = 0;
+    img = abreImagem(INPUT_IMAGE, CANAIS_IMAGEM);
+    img_abertura = criaImagem(img->largura, img->altura, 1);
+    testezona = criaImagem(img->largura, img->altura, 1);
+    buffer = criaImagem(img->largura, img->altura, 1);
+    img_out = criaImagem(img->largura, img->altura, 1);
+    escala_cinza = criaImagem(img->largura, img->altura, 1);
+    RGBParaCinza(img, escala_cinza);
+
+    binarizaAdapt(escala_cinza, img_out, 45, 0.126, buffer);
+
+    abertura(img_out, kernel, centro, img_abertura, buffer);
+
+
+    e = clonaImagem(img_abertura);
+    d = clonaImagem(img_abertura);
+
+    erode(e, kernel, centro, d);
+    dilata(d, kernelA, centroA, e);
+    erode(e, kernelD, centroD, d);
+
+    total = rotulaFloodFill(d, &componentes, 2, 2, 10);
+
+
+    int *vetor = malloc(total*sizeof(int));
+    float *mapa = malloc(total*sizeof(int));
+    for(int i = 0; i < total; i++) {
+        vetor[i] = 0;
+        mapa[i] = componentes[i].label;
+    }
+
+    printf("Imagem %s\n", INPUT_IMAGE);
+    printf("Total de arroz sem separar = %d\n", total);
+
+    int lh = linhaHorizontal(d, &componentes, total, vetor, mapa, duplicados);
+    int lv = linhaVertical(d, &componentes, total, vetor, mapa, duplicados);
+
+    if((lv + lh) > 0) {
+        printf("Total final: %d\n", calculaQuantidadeArrozBlob(duplicados, componentes, total));
+        testezona = teste3(d, testezona, duplicados, componentes, total);
+    }
+        
+    salvaImagem(testezona, "testezona.bmp");
+
+    destroiImagem(img);
+    destroiImagem(img_out);
+    destroiImagem(buffer);
+    destroiImagem(escala_cinza);
+    free(mapa);
+    free(vetor);
+
+    printf("Pressione qualquer tecla (e de enter) para sair\n");
+    scanf("%c");
+    return 0;
+}
+
+int retornaIndice(float *v, int size, float label) {
+    int i;
+    for(i = 0; i < size && v[i] != label; i++) {}
+    return i;
+}
+
+int linhaHorizontal(Imagem* img, ComponenteConexo** componentes, int size_componentes, int *vetor, float* mapa, int* duplicados) 
+{
+    int total_a_adicionar = 0;
+    int passou_preto = 0; //conta quantas vezes passou preto
+    int i_salvo = -1;
+    float _label;
+    int indiceDuplicados = 0;
+
+    for(int i = 0; i < img->altura; i++) {
+        for(int j = 0; j < img->largura; j++) {
+            if(img->dados[0][i][j] != 0) {
+                if(passou_preto == 1 && _label == img->dados[0][i][j] && i == i_salvo) {
+                    i_salvo = i;
+                    total_a_adicionar++;
+                    int indice = retornaIndice(mapa, size_componentes, _label);
+
+                    duplicados[indice] = 1;
+
+                    if(total_a_adicionar > vetor[indice])
+                        vetor[indice] = total_a_adicionar;
+                    passou_preto = 0;
+                    continue;
+                }
+                
+                _label = img->dados[0][i][j];
+                i_salvo = i;
+                passou_preto = 0;
+                total_a_adicionar = 0;
+            }
+            else
+                passou_preto = 1;
+        }
+    }
+
+    total_a_adicionar = 0;
+    for(int i = 0; i < size_componentes; i++) {
+        total_a_adicionar += vetor[i];
+    }
+    return total_a_adicionar;
+}
+
+int linhaVertical(Imagem* img, ComponenteConexo** componentes, int size_componentes, int* vetor, float* mapa, int* duplicados) 
+{
+    int total_a_adicionar = 0;
+    int passou_preto = 0; //conta quantas vezes passou preto
+    int i_salvo = -1;
+    float _label = 0;
+
+    for(int i = 0; i < img->largura; i++) {
+        for(int j = 0; j < img->altura; j++) {
+            if(img->dados[0][j][i] != 0) {
+                if(passou_preto == 1 && _label == img->dados[0][j][i] && i == i_salvo) {
+                    i_salvo = i;
+                    total_a_adicionar++;
+                    int indice = retornaIndice(mapa, size_componentes, _label);
+
+                    duplicados[indice] = 1;
+
+                    if(total_a_adicionar > vetor[indice])
+                        vetor[indice] = total_a_adicionar;
+                    passou_preto = 0;
+                    continue;
+                }
+                
+                _label = img->dados[0][j][i];
+                i_salvo = i;
+                passou_preto = 0;
+                total_a_adicionar = 0;
+            }
+            else
+                passou_preto = 1;
+        }
+    }
+
+    total_a_adicionar = 0;
+    for(int i = 0; i < size_componentes; i++) {
+        total_a_adicionar += vetor[i];
+    }
+    return total_a_adicionar;
+}

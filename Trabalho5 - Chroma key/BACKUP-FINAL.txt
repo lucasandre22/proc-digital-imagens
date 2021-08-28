@@ -1,0 +1,160 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+#include "pdi.h"
+#include <windows.h>
+
+#define INPUT_IMAGE "1.bmp"
+#define CANAIS_IMAGEM 3
+
+void tiraBordasVerdeImagemOriginal(Imagem* img, Imagem* magnitude, Imagem* hsl) {
+    //estima pelo valor considerado verde no hue
+    for(int i = 0; i < img->altura; i++) {
+        for(int j = 0; j < img->largura; j++) { 
+            //se hsl acusa que é verde
+            if(hsl->dados[0][i][j] >= 50 && hsl->dados[0][i][j] <= 140) {
+                //se é mesmo verde
+                if(img->dados[1][i][j] > img->dados[0][i][j] && img->dados[1][i][j] > img->dados[2][i][j]) {
+                    //se não é uma mistura do verde com alguma outra cor, se possuem valores muito próximos quer dizer que é mistura então não deve ser considerado (estava tendo problemas com amarelo antes)
+                    //constante 0.050 é meio aleatória, só estimei um valor de diferença p/ não ser mistura
+                    if((img->dados[1][i][j] - img->dados[0][i][j]) > 0.050 && (img->dados[1][i][j] - img->dados[2][i][j]) > 0.050) {
+                        //img->dados[1][i][j] = (img->dados[0][i][j] + img->dados[2][i][j]) / 2;
+                        img->dados[1][i][j] = img->dados[0][i][j] > img->dados[2][i][j] ? img->dados[0][i][j] : img->dados[2][i][j];
+                    }
+                }
+            }
+        }
+    }
+}
+
+void arrumaTransicao(Imagem* img, Imagem* mascara) {
+    Imagem* magnitude = criaImagem(img->largura, img->altura, 1);
+    Imagem* orientacao = criaImagem(img->largura, img->altura, 1);
+    Imagem* hsl = criaImagem(img->largura, img->altura, 3);
+    Imagem* copia = criaImagem(img->largura, img->altura, 1);
+    Imagem* copia_magnitude = criaImagem(img->largura, img->altura, 1);
+    for(int i = 0; i < img->altura; i++) {
+        for(int j = 0; j < img->largura; j++) {
+            magnitude->dados[0][i][j] = 0.0f;
+        }
+    }
+
+    computaGradientes(mascara, 7, NULL, NULL, magnitude, orientacao);
+    RGBParaHSL(img, hsl);
+
+    tiraBordasVerdeImagemOriginal(img, magnitude, hsl);
+
+    filtroGaussiano(mascara, copia, 1, 1, NULL);
+    copiaConteudo(magnitude, copia_magnitude);
+    
+    for(int i = 0; i < img->altura; i++) {
+        for(int j = 0; j < img->largura; j++) {
+            if(magnitude->dados[0][i][j] != 0.0f) {
+                mascara->dados[0][i][j] = copia->dados[0][i][j];
+            }
+            copia_magnitude->dados[0][i][j] = magnitude->dados[0][i][j];
+        }
+    }
+
+    //ainda fica meio esverdeada as bordas,
+    for(int i = 0; i < img->altura; i++) {
+        for(int j = 0; j < img->largura; j++) {
+            if(mascara->dados[0][i][j] != 0.0f && mascara->dados[0][i][j] != 1.0f) {
+                if((img->dados[1][i][j] - img->dados[0][i][j]) > 0.050 && (img->dados[1][i][j] - img->dados[2][i][j]) > 0.050)
+                    img->dados[1][i][j] = img->dados[0][i][j] > img->dados[2][i][j] ? img->dados[0][i][j] : img->dados[2][i][j];
+            }
+        }
+    }
+
+    //salvaImagem(magnitude, "magnitude.bmp");
+    destroiImagem(magnitude);
+    destroiImagem(orientacao);
+}
+
+void juntaFundo(Imagem* img, Imagem* mascara, Imagem* fundo) {
+    arrumaTransicao(img, mascara);
+    float peso1;
+    float peso2;
+    for(int h = 0; h < 3; h++) {
+        for(int i = 0; i < img->altura; i++) {
+            for(int j = 0; j < img->largura; j++) {
+                peso1 = mascara->dados[0][i][j] * fundo->dados[h][i][j];
+                peso2 = (1.0f-mascara->dados[0][i][j]) * img->dados[h][i][j];
+                img->dados[h][i][j] = peso1 + peso2;
+            }
+        }
+    }
+    //funcaoMilagrosa(img,mascara);
+    salvaImagem(img, "imagem-foda-key.bmp");
+    salvaImagem(mascara, "imagem-foda-key-mascara.bmp");
+}
+
+void separaFundo(Imagem* img, Imagem* fundo) {
+    Imagem* mascara = criaImagem(img->largura, img->altura, 1);
+    Imagem* aux = criaImagem(img->largura, img->altura, 1);
+    float media_diferenca_rb = 0;
+    float media = 0;
+    int count2 = 0;
+    int cont = 0;
+    for(int i = 0; i < img->altura; i++) {
+        for(int j = 0; j < img->largura; j++) {
+            if(img->dados[1][i][j] > img->dados[0][i][j] && img->dados[1][i][j] > img->dados[2][i][j]) {
+                media += img->dados[1][i][j] - ((img->dados[0][i][j] + img->dados[2][i][j])/2); //faço media da diferença entre verde e os outros canais, quando é verde.
+                count2++;
+                //media_diferenca_rb += fabs(img->dados[0][i][j] - img->dados[2][i][j]);
+                //cont++;
+                //if(fabs(img->dados[0][i][j] - img->dados[2][i][j]) < 0.300) //0.400 0.800
+                    //if(fabs(img->dados[1][i][j] - img->dados[0][i][j]) > 0.150 && fabs(img->dados[1][i][j] - img->dados[2][i][j]) > 0.150) { //0.150 passaros 0.300 ->achar um jeito de pegar esse parametro
+                        //mascara->dados[0][i][j] = 1;
+                    //}
+            }
+        }
+    }
+
+    //media_diferenca_rb = media_diferenca_rb/cont;
+    media = media/count2;
+    //printf("Diferenca media: %f\n", media_diferenca_rb);
+    printf("Diferenca loca: %f\n", media);
+
+    for(int i = 0; i < img->altura; i++) {
+        for(int j = 0; j < img->largura; j++) {
+            if(img->dados[1][i][j] > img->dados[0][i][j] && img->dados[1][i][j] > img->dados[2][i][j]) {
+                if(fabs(img->dados[0][i][j] - img->dados[2][i][j]) < 0.300) //quando é verde, eu sei que os outros canais têm valores parecidos, constante 0.300 veio de algumas tentativas
+                    
+                    //aqui estimo a diferença entre o canal verde e os demais, dividi a média por 2 para não ser muito alto
+                    //para ser fundo
+                    if(fabs(img->dados[1][i][j] - img->dados[0][i][j]) > media/2.0 && fabs(img->dados[1][i][j] - img->dados[2][i][j]) > media/2.0) {
+                        mascara->dados[0][i][j] = 1;
+                    }
+                       
+            } else
+                mascara->dados[0][i][j] = 0;
+        }
+    }
+
+    juntaFundo(img, mascara, fundo);
+    salvaImagem(mascara, "imagem-foda.bmp");
+    destroiImagem(mascara);
+}
+
+int main ()
+{
+    Imagem* img;
+    Imagem* fundo;
+    Imagem* fundo_aux;
+
+    img = abreImagem(INPUT_IMAGE, CANAIS_IMAGEM);
+    fundo_aux = abreImagem("fundo.bmp", CANAIS_IMAGEM);
+    fundo = criaImagem(img->largura, img->altura, CANAIS_IMAGEM);
+    redimensionaBilinear(fundo_aux, fundo);
+    separaFundo(img, fundo);
+    //fazMascaraSeparacao(img);
+ 
+    salvaImagem(img, "FINAL.bmp");
+    destroiImagem(img);
+
+    printf("Pressione qualquer tecla (e de enter) para sair\n");
+    scanf("%c");
+    return 0;
+}

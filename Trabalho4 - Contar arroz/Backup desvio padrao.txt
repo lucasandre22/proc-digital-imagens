@@ -1,0 +1,64 @@
+/*int calculaQuantidadeArrozBlob(int* duplicados, ComponenteConexo* componentes, int size) {
+    int total = 0;
+    float media;
+    int n = 0;
+    int diminuir = 0;
+
+    //faz a media diminuindo a quantidade de blob com arroz grudado
+    for(int i = 0; i < size; i++) {
+        if(duplicados[i] == 0) {
+            total += componentes[i].n_pixels;
+        }
+        else {
+            diminuir++;
+        }
+    }
+    
+    media = total/(size-diminuir);
+
+    float variacoes = 0;
+    float v = 0;
+    for (int i = 0; i < size; i++) {
+        if(duplicados[i] == 0) {
+            v = componentes[i].n_pixels - media;
+            variacoes += v*v;
+        }
+    }
+    float sigma = sqrt(variacoes / (size-diminuir));
+    printf("Resultado d = %.2f\n", sigma);
+
+    float multiplica = 1.2;
+    int lala = 0;
+    int j;
+    //estima a quantidade de arroz dentro do blob grudado
+    for(int i = 0; i < size; i++) {
+        if(duplicados[i] > 0) {
+            if(componentes[i].n_pixels > media && (componentes[i].n_pixels - media) > (1.5*sigma)) { //3.2 if(componentes[i].n_pixels > media && componentes[i].n_pixels > (media+(2*sigma)))
+                n++;
+                multiplica = 1.5;
+                lala++;
+                //ve quantas vezes o valor total de pixels do blob pode ser dividido em arrozes
+                for(j = 2; ((componentes[i].n_pixels / j) - media) > (multiplica*sigma); j++) { //2.8
+                    n++;
+                    multiplica -= 0.03;
+                }
+            }
+        }
+    }
+    printf("lala: %d\n", lala);
+        /**for(int i = 0; i < size; i++) {
+        if(duplicados[i] == 1) {
+            if(componentes[i].n_pixels > media && abs(componentes[i].n_pixels - media) > (media/3.2)) { //3.2
+                n++;
+
+                //ve quantas vezes o valor total de pixels do blob pode ser dividido em arrozes
+                for(int j = 2; (abs((componentes[i].n_pixels / j) - media)) > (media/2.9); j++) { //2.8
+                    n++;
+                    printf("lala\n");
+                }
+            }
+        }
+    }
+
+    return n;
+}*/
